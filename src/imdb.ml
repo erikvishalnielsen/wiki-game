@@ -3,8 +3,12 @@ open! Core
 (* [get_credits] should take the contents of an IMDB page for an actor and return a list
    of strings containing that actor's main credits. *)
 let get_credits contents : string list =
-  ignore (contents : string);
-  failwith "TODO"
+  let open Soup in
+  parse contents
+  $$ "a[class*=ipc-primary-image-list-card__title]"
+  |> to_list
+  |> List.map ~f:(fun b -> R.leaf_text b)
+  |> List.dedup_and_sort ~compare:String.compare
 ;;
 
 let print_credits_command =
