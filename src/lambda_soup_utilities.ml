@@ -84,13 +84,8 @@ let%expect_test "get_first_item_of_all_unordered_lists" =
 
 (* Gets the first item of the second unordered list in an HTML page. *)
 let get_first_item_of_second_unordered_list contents : string =
-  let open Soup in
-  parse contents
-  $$ "ul"
-  |> to_list
-  |> List.map ~f:(fun ul -> (ul $$ "li") |> to_list |> List.hd_exn |> texts |> String.concat ~sep:"" |> String.strip)
-  |> List.tl_exn
-  |> List.hd_exn
+  let list = get_first_item_of_all_unordered_lists contents in
+  List.nth_exn list 1
 ;; 
 
 let%expect_test "get_first_item_of_second_unordered_list" =

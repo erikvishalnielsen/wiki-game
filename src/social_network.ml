@@ -1,4 +1,5 @@
 open! Core
+open! Queue
 module Person = String
 
 (* We separate out the [Network] module to represent our social network in OCaml types. *)
@@ -118,10 +119,28 @@ let visualize_command =
 
 (* [find_friend_group network ~person] returns a list of all people who are mutually
    connected to the provided [person] in the provided [network]. *)
+let rec friendRec graph ~queue ~visited = 
+
+  match (Queue.dequeue queue) with 
+  | Some name -> 
+    (if not (List.exists visited ~f:(fun f -> String.equal f name)) then 
+      (let newList = List.append visited [name] in
+      let friendList = List.filter graph ~f:(fun connection -> String.equal (fst connection) name) in
+      List.iter friendList ~f:(fun f -> Queue.enqueue queue (snd f));
+      friendRec graph ~queue:queue ~visited:newList)
+      
+    else friendRec graph ~queue:queue ~visited:visited)
+  | None -> visited
+
+;;
+
 let find_friend_group network ~person : Person.t list =
-  ignore (network : Network.t);
-  ignore (person : Person.t);
-  failwith "TODO"
+  let queueFriend = Queue.create () in
+  Queue.enqueue queueFriend person;
+  let visited : string list = [] in 
+  let graph = Set.elements network in
+  
+  friendRec graph ~queue:queueFriend ~visited:visited
 ;;
 
 let find_friend_group_command =
