@@ -46,12 +46,26 @@ let print_links_command =
    [how_to_fetch] argument along with [File_fetcher] to fetch the articles so that the
    implementation can be tested locally on the small dataset in the ../resources/wiki
    directory. *)
+
+type websiteVis = 
+  { link : string;
+    name : string;
+    depth : int; 
+  }
+
+(*MAX DEPTH DECREASES UNTIL IT REACHES ZERO DURING THIS FUNCTION*)
+let rec vizRec ~contentsArticle ~websiteList ~websiteQueue ~d  = 
+  let links = get_linked_articles contentsArticle in
+  
+
+;;
+
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
-  ignore (max_depth : int);
-  ignore (origin : string);
-  ignore (output_file : File_path.t);
-  ignore (how_to_fetch : File_fetcher.How_to_fetch.t);
-  failwith "TODO"
+  let contents : string = In_channel.read_all (File_path.to_string origin) in
+  let websiteList : websiteVis list = [] in
+  let websiteQueue = Queue.create() in
+
+  let newWebsiteList = vizRec ~contentsArticle:contents ~websiteList:websiteList ~websiteQueue:websiteQueue ~depth:max_depth in
 ;;
 
 let visualize_command =
