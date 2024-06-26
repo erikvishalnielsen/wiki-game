@@ -30,6 +30,14 @@ let get_linked_articles contents : string list =
   |> List.dedup_and_sort ~compare:String.compare
 ;;
 
+let _get_title contents : string list =
+  let open Soup in
+  parse contents
+  $$ "title"
+  |> to_list
+  |> List.map ~f:(fun b -> texts b |> String.concat ~sep:"" |> String.strip)
+;;
+
 let print_links_command =
   let open Command.Let_syntax in
   Command.basic
@@ -47,25 +55,86 @@ let print_links_command =
    implementation can be tested locally on the small dataset in the ../resources/wiki
    directory. *)
 
-type websiteVis = 
-  { link : string;
-    name : string;
-    depth : int; 
-  }
+module WebsiteVis = struct 
+  type t = 
+    { link : string;
+      name : string;
+      depth : int; 
+    }
+    [@@deriving compare, sexp, hash, equal]
+
+    let to_string t = t.name ^ ", " ^ t.link
+    let _link t = t.link
+    let _name t = t.name
+    let _depth t = t.depth
+end
 
 (*MAX DEPTH DECREASES UNTIL IT REACHES ZERO DURING THIS FUNCTION*)
-let rec vizRec ~contentsArticle ~websiteList ~websiteQueue ~d  = 
-  let links = get_linked_articles contentsArticle in
+let rec vizRec howToFetch ~resource:article ~websiteList ~websiteQueue ~d  = 
+  let contents : string = File_fetcher.fetch_exn howToFetch ~resource:article in
+  print_endline article;
+  let links = get_linked_articles contents in
+  let slashPos = List.map links ~f:(fun f -> String.rindex f '/') in
+  let _titleInd = 
+    (match String.rindex article '/' with
+    | Some index -> index
+    | None -> -1)
+  in
+  (*let _articleTitle = get_title contents in*)
+
+  let articleRec : WebsiteVis.t = {link = article; name = List.last_exn (String.split article ~on:'/'); depth = d} in
   
 
+  List.iter2_exn slashPos links ~f:(fun opt linked -> 
+    match opt with
+    | Some _index -> (
+      if d > 0 then 
+        let newItem : WebsiteVis.t = {link = linked; name = List.last_exn (String.split linked ~on:'/'); depth = d - 1} in
+        Queue.enqueue websiteQueue newItem;
+        Queue.enqueue websiteList (articleRec, newItem);
+        ) (*MAY NEED TO DO >= HERE*)
+    | None -> print_endline "this shouldn't have happened"
+  );
+
+  match (Queue.dequeue websiteQueue) with 
+  | Some website -> (
+    vizRec howToFetch ~resource:(WebsiteVis._link website) ~websiteList:websiteList ~websiteQueue:websiteQueue ~d:(d-1);)
+  | None -> websiteList 
 ;;
 
+module G = Graph.Imperative.Graph.Concrete (WebsiteVis)
+
+(* We extend our [Graph] structure with the [Dot] API so that we can easily render
+   constructed graphs. Documentation about this API can be found here:
+   https://github.com/backtracking/ocamlgraph/blob/master/src/dot.mli *)
+module Dot = Graph.Graphviz.Dot (struct
+    include G
+
+    (* These functions can be changed to tweak the appearance of the generated
+       graph. Check out the ocamlgraph graphviz API
+       (https://github.com/backtracking/ocamlgraph/blob/master/src/graphviz.mli) for
+       examples of what values can be set here. *)
+    let edge_attributes _ = [ `Dir `None ]
+    let default_edge_attributes _ = []
+    let get_subgraph _ = None
+    let vertex_attributes v = [ `Shape `Box; `Label (WebsiteVis.to_string v); `Fillcolor 1000 ]
+    let vertex_name v = sprintf !"\"%s\"" (WebsiteVis.to_string v)
+    let default_vertex_attributes _ = []
+    let graph_attributes _ = []
+  end)
+
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
-  let contents : string = In_channel.read_all (File_path.to_string origin) in
-  let websiteList : websiteVis list = [] in
+  let websiteList = Queue.create() in
   let websiteQueue = Queue.create() in
 
-  let newWebsiteList = vizRec ~contentsArticle:contents ~websiteList:websiteList ~websiteQueue:websiteQueue ~depth:max_depth in
+  let results = vizRec how_to_fetch ~resource:origin ~websiteList:websiteList ~websiteQueue:websiteQueue ~d:max_depth in
+  let resultsList = Queue.to_list results in
+  let graph = G.create () in
+  List.iter resultsList ~f:(fun (websiteVis1, websiteVis2) ->
+          (* [G.add_edge] auomatically adds the endpoints as vertices in the graph if
+             they don't already exist. *)
+    G.add_edge graph websiteVis1 websiteVis2);
+    Dot.output_graph (Out_channel.create (File_path.to_string output_file)) graph;
 ;;
 
 let visualize_command =
