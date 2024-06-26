@@ -128,7 +128,7 @@ let rec friendRec graph ~queue ~visited =
       let friendList = List.filter graph ~f:(fun connection -> String.equal (fst connection) name) in
       List.iter friendList ~f:(fun f -> Queue.enqueue queue (snd f));
       friendRec graph ~queue:queue ~visited:newList)
-      
+
     else friendRec graph ~queue:queue ~visited:visited)
   | None -> visited
 
