@@ -500,7 +500,7 @@ represents the start of the maze, and `E` represents the end of the maze.
 How can we represent this maze as a graph? To make a decision here, think about what
 questions you'll want to answer about the maze in order to write a solver. In addition to
 implementing the solver, you should also think about how you'll want to display a
-solution.
+solut
 
 Let's implement the `solve` command in [maze.ml](./src/maze.ml).
 

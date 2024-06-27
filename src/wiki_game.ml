@@ -63,16 +63,22 @@ module WebsiteVis = struct
     }
     [@@deriving compare, sexp, hash, equal]
 
-    let to_string t = t.name ^ ", " ^ t.link
+    let to_string t = t.name
     let _link t = t.link
     let _name t = t.name
     let _depth t = t.depth
 end
 
+let correct_url url (how_to_fetch : File_fetcher.How_to_fetch.t) = 
+  match how_to_fetch with 
+  | Local _ -> url
+  | Remote -> if not (String.is_prefix ~prefix:"https://" url) then "https://en.wikipedia.org" ^ url else url
+
 (*MAX DEPTH DECREASES UNTIL IT REACHES ZERO DURING THIS FUNCTION*)
 let rec vizRec howToFetch ~resource:article ~websiteList ~websiteQueue ~d  = 
-  let contents : string = File_fetcher.fetch_exn howToFetch ~resource:article in
-  print_endline article;
+  let correctUrl = correct_url article howToFetch in
+  print_endline correctUrl;
+  let contents : string = File_fetcher.fetch_exn howToFetch ~resource:correctUrl in
   let links = get_linked_articles contents in
   let slashPos = List.map links ~f:(fun f -> String.rindex f '/') in
   let _titleInd = 
@@ -100,6 +106,46 @@ let rec vizRec howToFetch ~resource:article ~websiteList ~websiteQueue ~d  =
   | Some website -> (
     vizRec howToFetch ~resource:(WebsiteVis._link website) ~websiteList:websiteList ~websiteQueue:websiteQueue ~d:(d-1);)
   | None -> websiteList 
+;;
+
+
+let rec vizRec2 howToFetch ~resource:article ~websiteList ~websiteQueue ~d ~dest  = 
+  let correctUrl = correct_url article howToFetch in
+  let contents : string = File_fetcher.fetch_exn howToFetch ~resource:correctUrl in
+  let links = get_linked_articles contents in
+  let slashPos = List.map links ~f:(fun f -> String.rindex f '/') in
+  let _titleInd = 
+    (match String.rindex article '/' with
+    | Some index -> index
+    | None -> -1)
+  in
+  (*let _articleTitle = get_title contents in*)
+
+  let articleRec : WebsiteVis.t = {link = correctUrl; name = List.last_exn (String.split article ~on:'/'); depth = d} in
+  
+  (match (List.exists (Queue.to_list websiteList) ~f:(fun item -> String.equal (WebsiteVis._name (fst item)) (WebsiteVis._name articleRec))) with
+  | true -> ()
+  | false -> (List.iter2_exn slashPos links ~f:(fun opt linked -> 
+    match opt with
+    | Some _index -> (
+      let newItem : WebsiteVis.t = {link = (correct_url linked howToFetch); name = List.last_exn (String.split linked ~on:'/'); depth = d - 1} in
+      if d > 0 then (
+        Queue.enqueue websiteQueue newItem;
+        Queue.enqueue websiteList (articleRec, newItem);
+      )) 
+    | None -> print_endline "this shouldn't have happened"
+    ;
+    )
+  ));
+
+  match (String.equal dest correctUrl) with 
+  | true -> websiteList
+  | false -> (
+    match (Queue.dequeue websiteQueue) with 
+  | Some website -> (
+    vizRec2 howToFetch ~resource:(WebsiteVis._link website) ~websiteList:websiteList ~websiteQueue:websiteQueue ~d:(d-1) ~dest:dest;)
+  | None -> websiteList 
+  )
 ;;
 
 module G = Graph.Imperative.Graph.Concrete (WebsiteVis)
@@ -170,12 +216,70 @@ let visualize_command =
    the ../resources/wiki directory.
 
    [max_depth] is useful to limit the time the program spends exploring the graph. *)
+
+(*module WikiRace = struct 
+    type t = 
+      { curr : WebsiteVis.t;
+        prev : WebsiteVis.t;
+      }
+      [@@deriving compare, sexp, hash, equal]
+  
+      let curr t = t.curr 
+      let prev t = t.prev
+  end*)
+
+let rec pathRec ~destination ~graphEdges ~queue ~list = 
+  let cur = Queue.dequeue queue in
+  match cur with 
+  | None -> None
+  | Some (web1, web2) -> (
+     
+  let curr = web2 in
+  let prev = web1 in
+  let visitedAlready = List.exists list ~f:(fun elt -> String.equal (WebsiteVis._link (fst elt)) (WebsiteVis._link curr)) in
+  
+  (match visitedAlready with
+  | true -> pathRec ~destination:destination ~graphEdges:graphEdges ~queue:queue ~list:list
+  | false -> (
+
+  let currStr = WebsiteVis._link curr in
+  let newList = (list @ [(curr, prev)]) in
+
+  (match String.equal currStr destination with
+  | true -> Some newList
+  | false -> (
+    let posPaths = List.map (List.filter graphEdges ~f:(fun (from, _to) -> (String.equal (WebsiteVis._link from) currStr))) ~f:(fun (_a,b) -> b) in
+    
+    let isempty = List.is_empty posPaths in
+    let itemDepth = WebsiteVis._depth curr in
+    match (isempty || (Int.equal itemDepth 1)) with
+    | true -> pathRec ~destination:destination ~graphEdges:graphEdges ~queue:queue ~list:list
+    | false -> (
+    List.iter posPaths ~f:(fun path -> Queue.enqueue queue (curr, path));
+    pathRec ~destination:destination ~graphEdges:graphEdges ~queue:queue ~list:newList)
+  )))))
+;;
+
 let find_path ?(max_depth = 3) ~origin ~destination ~how_to_fetch () =
-  ignore (max_depth : int);
-  ignore (origin : string);
-  ignore (destination : string);
-  ignore (how_to_fetch : File_fetcher.How_to_fetch.t);
-  failwith "TODO"
+  let websiteList = Queue.create() in
+  let websiteQueue = Queue.create() in
+  let pathQueue = Queue.create() in
+  let path = [] in
+
+  let results = Queue.to_list (vizRec2 how_to_fetch ~resource:origin ~websiteList:websiteList ~websiteQueue:websiteQueue ~d:max_depth ~dest:destination) in
+  let startingPoint = fst (List.find_exn results ~f:(fun elt -> String.equal origin (WebsiteVis._link (fst elt)))) in
+  Queue.enqueue pathQueue (startingPoint,startingPoint);
+  print_endline "got results list";
+  pathRec ~destination:destination ~graphEdges:results ~queue:pathQueue ~list:path
+;;
+
+let rec recPrint ~resultsList ~start ~list : WebsiteVis.t list = 
+  let prevItem = (List.find_exn resultsList ~f:(fun item -> String.equal (WebsiteVis._link start) (WebsiteVis._link (fst item)))) in
+  match (String.equal (WebsiteVis._link (fst prevItem)) (WebsiteVis._link (snd prevItem))) with
+  | true -> list
+  | false -> (
+  let prevThing = snd prevItem in
+  recPrint ~resultsList:resultsList ~start:prevThing ~list:([prevThing] @ list))
 ;;
 
 let find_path_command =
@@ -195,8 +299,14 @@ let find_path_command =
       fun () ->
         match find_path ~max_depth ~origin ~destination ~how_to_fetch () with
         | None -> print_endline "No path found!"
-        | Some trace -> List.iter trace ~f:print_endline]
+        | Some trace -> 
+          print_endline "Program has finished";
+          let list = [fst (List.last_exn trace)] in
+          let printList = recPrint ~resultsList:trace ~start:(fst (List.last_exn trace)) ~list:list in
+          List.iter printList ~f:(fun web -> print_endline (WebsiteVis.to_string web));
+          ]
 ;;
+(*List.iter trace ~f:(fun web -> print_endline (WebsiteVis.to_string web))*)
 
 let command =
   Command.group
