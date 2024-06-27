@@ -1,0 +1,68 @@
+module Node_id : sig
+  (** A [Node_id.t] uniquely identifies a node in a graph. We will using it later for
+      looking up and setting the state of nodes in the course of our path search. *)
+  type t [@@deriving compare, equal, sexp]
+
+  include Comparable.S with type t := t
+
+  val create : int -> t
+end = struct
+  module T = struct
+    type t = int [@@deriving compare, equal, sexp]
+  end
+
+  (* Remember that this is the syntax for include modules such as [Map] and [Set] that are
+     provided by [Comparable.Make] to our module. In our case, we use [Node_id.Map.t] in
+     the [Nodes.t]. *)
+  include T
+  include Comparable.Make (T)
+
+  let create id = id
+end
+
+module Edge = struct
+  (** This type represents an edge between two nodes [a] and [b]. Note that since we are
+      working with undirected graphs, the order of [a] and [b] do not matter. That is, an
+      [Edge.t] { a = 1; b = 2; ... } is equivalent to { a = 2; b = 1; ... } *)
+
+  module T = struct
+    type t =
+      { a : Node_id.t
+      ; b : Node_id.t
+      ; distance : int
+      }
+    [@@deriving compare, equal, sexp]
+  end
+
+  include T
+  include Comparable.Make (T)
+end
+
+module Edges = struct
+  type t = Edge.t list [@@deriving sexp]
+
+  (* Exercise 1: Given a [t] (list of edges) and a [Node_id.t], implement a function that
+     returns a list of neighboring nodes with their corresponding distances. *)
+  let neighbors t node_id : (Node_id.t * int) list = []
+
+  (* We've left all of the tets in this file disabled. As you complete the exercises,
+     please make sure to remove `[@tags "disabled"]` and run `dune runtest` to ensure that
+     your implementation passes the test. *)
+  let%expect_test ("neighbors" [@tags "disabled"]) =
+    let n = Node_id.create in
+    let n0, n1, n2, n3, n4, n5 = n 0, n 1, n 2, n 3, n 4, n 5 in
+    let t =
+      Edge.
+        [ { a = n0; b = n1; distance = 1 }
+        ; { a = n1; b = n2; distance = 3 }
+        ; { a = n2; b = n3; distance = 2 }
+        ; { a = n2; b = n4; distance = 1 }
+        ; { a = n3; b = n5; distance = 5 }
+        ; { a = n4; b = n5; distance = 1 }
+        ]
+    in
+    let neighbors = neighbors t n2 in
+    print_s [%message (neighbors : (Node_id.t * int) list)];
+    [%expect {| (neighbors ((1 3) (3 2) (4 1))) |}]
+  ;;
+end
