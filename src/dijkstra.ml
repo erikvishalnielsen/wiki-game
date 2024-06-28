@@ -69,7 +69,7 @@ module Edges = struct
   (* We've left all of the tets in this file disabled. As you complete the
      exercises, please make sure to remove `[@tags "disabled"]` and run `dune
      runtest` to ensure that your implementation passes the test. *)
-  let%expect_test ("neighbors" [@tags "disabled"]) =
+  let%expect_test ("neighbors") =
     let n = Node_id.create in
     let n0, n1, n2, n3, n4, n5 = n 0, n 1, n 2, n 3, n 4, n 5 in
     let t =
@@ -107,6 +107,7 @@ module Node = struct
 
   let init () = { state = Unseen }
   let set_state t state = t.state <- state
+  let state t = t.state
 end
 
 module Nodes = struct
@@ -117,7 +118,15 @@ module Nodes = struct
   (* Exercise 2: Given a list of edges, create a [t] that contains all nodes
      found in the edge list. Note that you can construct [Node.t]s with the
      [Node.init] function. *)
-  let of_edges edges = Node_id.Map.empty (*FUNCTION GOES HERE*)
+  let of_edges (edges : Edges.t) = (*FUNCTION GOES HERE*)
+    (*List.dedup_and_sort (List.concat_map edges ~f:(fun edge -> [(Edge.a edge), (Edge.b edge)]))*)
+    List.fold edges ~init:(Map.empty (module Node_id)) ~f:(fun map edge ->
+      let a = Node.init () in
+      let b = Node.init () in
+      let newMap = Map.add_exn map ~key:(Edge.a edge) ~data:a in
+      Map.add_exn newMap ~key:(Edge.b edge) ~data:b
+    )
+  ;;
   let find = Map.find_exn
   let state t node_id = find t node_id |> Node.state
 
@@ -128,9 +137,35 @@ module Nodes = struct
 
   (* Exercise 3: Given a [t], find the next node to process by selecting the
      node with the smallest distance along with its via route. *)
-  let next_node t : (Node_id.t * (int * Node_id.t)) option = None
+  let next_node t : (Node_id.t * (int * Node_id.t)) option = 
+    let filterMap = Map.filter t ~f:(fun var -> (
+      match (Node.state var) with
+      | Todo {distance; via} -> true
+      | _ -> false
+    )) in
+    let mapList = Map.to_alist filterMap in
+    
+    match(List.min_elt mapList ~compare:(fun item1 item2 -> 
+      let dist1 = match Node.state (snd item1) with
+      | Todo {distance; via} -> distance
+      | _ -> failwith "Error"
+      in
+      let dist2 = match Node.state (snd item2) with
+      | Todo {distance; via} -> distance
+      | _ -> failwith "Error"
+      in
+      Int.compare dist1 dist2
+    )) with
+    | Some ans -> 
+      let tupleAns = match Node.state (snd ans) with
+      | Todo {distance; via} -> (distance, via)
+      | _ -> failwith "Error"
+      in
+      Some ((fst ans), tupleAns)
+    | None -> None
+  ;;
 
-  let%expect_test ("next_node" [@tags "disabled"]) =
+  let%expect_test ("next_node") =
     let n = Node_id.create in
     let n0, n1, n2, n3, n4, n5 = n 0, n 1, n 2, n 3, n 4, n 5 in
     let t =
