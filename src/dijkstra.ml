@@ -187,16 +187,81 @@ module Nodes = struct
      -- that is the origin has been marked as [Origin] and nodes on the
      shortest path have been marked as [Done] -- return the path from the
      origin to the given [distination]. *)
-  let path t destination : Node_id.t list = []
+
+  let rec pathRec ~list ~stack ~dest = 
+    let currPick = match Node.state (snd (Stack.top_exn stack)) with
+    | Done {via} -> via
+    | _ -> failwith "erroroneus"
+  in
+    match (Node_id.equal (currPick) (dest)) with
+    | true -> stack
+    | false -> (
+      List.iter list ~f:(fun item -> (if (Node_id.equal (currPick) (fst item)) then Stack.push stack (item)));
+      pathRec ~list:list ~stack:stack ~dest:dest;
+    )
+  ;;
+  let path t destination : Node_id.t list = 
+    let filterMap = Map.to_alist (Map.filter t ~f:(fun var -> (
+      match (Node.state var) with
+      | Done {via} -> true
+      | _ -> false
+    ))) in
+    let originPoint = List.hd_exn (Map.to_alist (Map.filter t ~f:(fun var -> (
+      match (Node.state var) with
+      | Origin -> true
+      | _ -> false
+    )))) in
+    let destPoint = List.hd_exn (Map.to_alist (Map.filter_keys t ~f:(fun key -> (
+      match (Node_id.equal key destination) with
+      | true -> true
+      | false -> false
+    )))) in
+    let originVia = fst originPoint
+  in
+    let stackRes = Stack.create () in
+    Stack.push stackRes (destPoint);
+
+    [originVia] @ (List.map (Stack.to_list (pathRec ~list:filterMap ~stack:stackRes ~dest:originVia)) ~f:(fun item -> (fst item)))
+  ;;
 
   (* Excercise 5: Write an expect test for the [path] function above. *)
-  let%expect_test "path" = ()
+  let%expect_test ("path") =
+    let n = Node_id.create in
+    let n0, n1, n2, n3, n4, n5 = n 0, n 1, n 2, n 3, n 4, n 5 in
+    let t =
+      [ n0, { Node.state = Origin }
+      ; n1, { Node.state = Done { via = n0 } }
+      ; n2, { Node.state = Done { via = n3 } }
+      ; n3, { Node.state = Done { via = n1 } }
+      ; n4, { Node.state = Done { via = n2 } }
+      ; n5, { Node.state = Unseen }
+      ]
+      |> Node_id.Map.of_alist_exn
+    in
+    let path = path t n4 in
+    print_s [%message (path : Node_id.t list)];
+    [%expect {| (path (0 1 3 2 4)) |}]
 end
 
 (* Exercise 6: Using the functions and types above, implement Dijkstras graph
    search algorithm! Remember to reenable unused warnings by deleting the
    first line of this file. *)
-let shortest_path ~edges ~origin ~destination : Node_id.t list = []
+let shortest_path ~edges ~origin ~destination : Node_id.t list = 
+  let map = Nodes.of_edges edges in
+  let originPoint = List.hd_exn (Map.to_alist (Map.filter map ~f:(fun var -> (
+      match (Node.state var) with
+      | Origin -> true
+      | _ -> false
+  )))) in
+  let destPoint = List.hd_exn (Map.to_alist (Map.filter_keys map ~f:(fun key -> (
+      match (Node_id.equal key destination) with
+      | true -> true
+      | false -> false
+  )))) in
+
+  (*STILL NEED TO FINISH USE HELPER FUNCTIONS ABOVE!!*)
+  []
+;;
 
 let%expect_test ("shortest_path" [@tags "disabled"]) =
   let n = Node_id.create in
